@@ -2,7 +2,7 @@ const express = require('express');
 const dotenv = require('dotenv');
 const connectDB = require('./config/db');
 const cookieParser=require('cookie-parser');
-
+const cors = require('cors')
 dotenv.config({path:'./config/config.env'});
 
 connectDB();
@@ -13,6 +13,9 @@ const auth = require('./routes/auth')
 const appointments=require('./routes/appointments');
 
 const app=express();
+app.use(cors())
+
+app.set('query parser', 'extended');
 
 //add cookie parser
 app.use(cookieParser());

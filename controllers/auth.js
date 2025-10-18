@@ -80,11 +80,15 @@ const sendTokenResponse = (user, statusCode, res) => {
     // Send cookie and response
     res.status(statusCode).cookie('token', token, options).json({
         success: true,
+        //add for frontend ***
+        _id:user._id,
+        name: user.name,
+        email:user.email,
+        //end for frontend ***
         token
     });
 };
 
-//At the end of file
 //@desc Get current Logged in user
 //@route POST /api/v1/auth/me
 //@access Private
