@@ -1,34 +1,31 @@
-// middleware/auth.js
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
 // Protect routes
-exports.protect = async (req, res, next) => {
+exports.protect = async (req,res,next) => {
   let token;
 
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
     token = req.headers.authorization.split(' ')[1];
   }
 
-  if (!token) {
-    return res.status(401).json({ success: false, message: 'Not authorized to access this route' });
+  //Make sure token exists
+  if (!token || token=='null') {
+    return res.status(401).json({success:false, message: 'Not authorized to access this route'});
   }
 
   try {
+    //Verify Token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    console.log(decoded)
+    console.log(decoded);
 
     req.user = await User.findById(decoded.id);
 
-    if (!req.user) {
-      return res.status(401).json({ success: false, message: 'The user no longer exists' });
-    }
-
     next();
   } catch (err) {
-    console.error(err);
-    return res.status(401).json({ success: false, message: 'Not authorized to access this route' });
+    console.log(err.stack);
+    return res.status(401).json({success: false, message: 'Not authorized to access this route'});
   }
 };
 

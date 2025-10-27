@@ -1,9 +1,9 @@
 const Appointment = require("../models/Appointment");
-const Hospital = require("../models/Hospital");
+const MassageShop = require("../models/MassageShop");
 
 // @desc     Get all appointments
 // @route    GET /api/v1/appointments
-// @access   Private (ต้องมี protect ก่อน)
+// @access   Private
 exports.getAppointments = async (req, res, next) => {
   let query;
 
@@ -12,22 +12,21 @@ exports.getAppointments = async (req, res, next) => {
   }
 
   if (req.user.role !== "admin") {
-    // General users can see only their appointments
+    // ผู้ใช้ทั่วไปเห็นเฉพาะของตัวเอง
     query = Appointment.find({ user: req.user.id }).populate({
-      path: "hospital",
-      select: "name province tel",
+      path: "massageShop",
+      select: "name address telephone",
     });
   } else {
-    // Admin can see all appointments, or by hospital if param exists
-    if (req.params.hospitalId) {
-      query = Appointment.find({ hospital: req.params.hospitalId }).populate({
-        path: "hospital",
-        select: "name province tel",
+    if (req.params.massageShopId) {
+      query = Appointment.find({ massageShop: req.params.massageShopId }).populate({
+        path: "massageShop",
+        select: "name address telephone",
       });
     } else {
       query = Appointment.find().populate({
-        path: "hospital",
-        select: "name province tel",
+        path: "massageShop",
+        select: "name address telephone",
       });
     }
   }
@@ -43,11 +42,10 @@ exports.getAppointments = async (req, res, next) => {
     console.error(err);
     res.status(500).json({
       success: false,
-      message: "Cannot find Appointment",
+      message: "Cannot get appointments",
     });
   }
 };
-
 
 // @desc    Get single appointment
 // @route   GET /api/v1/appointments/:id
@@ -55,14 +53,14 @@ exports.getAppointments = async (req, res, next) => {
 exports.getAppointment = async (req, res, next) => {
   try {
     const appointment = await Appointment.findById(req.params.id).populate({
-      path: "hospital",
-      select: "name province tel",
+      path: "massageShop",
+      select: "name address telephone",
     });
 
     if (!appointment) {
       return res.status(404).json({
         success: false,
-        message: `No appointment found with the id of ${req.params.id}`,
+        message: `No appointment found with the ID of ${req.params.id}`,
       });
     }
 
@@ -80,43 +78,51 @@ exports.getAppointment = async (req, res, next) => {
 };
 
 // @desc    Add appointment
-// @route   POST /api/v1/hospitals/:hospitalId/appointments
+// @route   POST /api/v1/appointments
 // @access  Private
 exports.addAppointment = async (req, res, next) => {
   try {
-    // เพิ่ม hospitalId จาก params ลงใน body
-    req.body.hospital = req.params.hospitalId;
+    const { massageShop, date } = req.body;
 
-    // เพิ่ม user id จาก token ลงใน body
-    req.body.user = req.user.id;
-
-    // ตรวจสอบว่ามี hospital มีจริงในฐานข้อมูลหรือเปล่า
-    const hospital = await Hospital.findById(req.params.hospitalId);
-
-    if (!hospital) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          message: `No hospital found with the id of ${req.params.hospitalId}`,
-        });
-    }
-    const existedAppointments = await Appointment.find({ user: req.user.id });
-    if (existedAppointments.length >= 3 && req.user.role !== 'admin') {
+    // ตรวจสอบว่ามีการส่งชื่อร้านมาหรือไม่
+    if (!massageShop) {
       return res.status(400).json({
         success: false,
-        message: `The user with ID ${req.user.id} has already made 3 appointments`
+        message: "Please provide massageShop name",
       });
     }
 
-    // สร้าง appointment
-    const appointment = await Appointment.create(req.body);
-    res.status(200).json({
+    const foundShop = await MassageShop.findOne({ shopName: massageShop });
+
+    if (!foundShop) {
+      return res.status(404).json({
+        success: false,
+        message: `No massage shop found with name "${massageShop}"`,
+      });
+    }
+
+    // จำกัดจำนวนการจองสูงสุด 3 ครั้งต่อผู้ใช้ (ยกเว้น admin)
+    const existingAppointments = await Appointment.find({ user: req.user.id });
+    if (existingAppointments.length >= 3 && req.user.role !== "admin") {
+      return res.status(400).json({
+        success: false,
+        message: `User with ID ${req.user.id} has already made 3 appointments`,
+      });
+    }
+
+    // สร้าง appointment ใหม่ (เก็บ id ของร้านเพื่อ populate ทีหลัง)
+    const appointment = await Appointment.create({
+      user: req.user.id,
+      massageShop: foundShop._id,
+      date,
+    });
+
+    res.status(201).json({
       success: true,
       data: appointment,
     });
   } catch (error) {
-    console.error(error);
+    console.error("Error creating appointment:", error.message);
     return res.status(500).json({
       success: false,
       message: "Cannot create appointment",
@@ -129,25 +135,57 @@ exports.addAppointment = async (req, res, next) => {
 // @access  Private
 exports.updateAppointment = async (req, res, next) => {
   try {
+    const { massageShop, date, status } = req.body;
+
     // หา appointment ก่อน
     let appointment = await Appointment.findById(req.params.id);
 
     if (!appointment) {
       return res.status(404).json({
         success: false,
-        message: `No appointment found with the id of ${req.params.id}`,
+        message: `No appointment found with the ID of ${req.params.id}`,
       });
     }
-    if (appointment.user.toString() !== req.user.id && req.user.role !== 'admin') {
-      return res.status(401).json({
+
+    // ตรวจสอบสิทธิ์: เจ้าของหรือ admin เท่านั้นที่แก้ได้
+    if (
+      appointment.user.toString() !== req.user.id &&
+      req.user.role !== "admin"
+    ) {
+      return res.status(403).json({
         success: false,
-        message: `User ${req.user.id} is not authorized to update this appointment`
+        message: "Not authorized to update this appointment",
       });
     }
-    // อัปเดต appointment
-    appointment = await Appointment.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,          // คืนค่าที่อัปเดตแล้ว
-      runValidators: true // ตรวจ validation ของ schema
+
+    // ถ้ามีชื่อร้าน ให้ตรวจสอบว่าร้านมีอยู่จริง
+    let updatedShop = appointment.massageShop; // ค่าเดิม
+    if (massageShop) {
+      const foundShop = await MassageShop.findOne({ shopName: massageShop });
+      if (!foundShop) {
+        return res.status(404).json({
+          success: false,
+          message: `No massage shop found with name "${massageShop}"`,
+        });
+      }
+      updatedShop = foundShop._id; // ✅ ใช้ id ของร้าน
+    }
+
+    // อัปเดตข้อมูลการจอง
+    appointment = await Appointment.findByIdAndUpdate(
+      req.params.id,
+      {
+        massageShop: updatedShop,
+        date: date || appointment.date,
+        status: status || appointment.status,
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    ).populate({
+      path: "massageShop",
+      select: "shopName address telephone",
     });
 
     res.status(200).json({
@@ -155,8 +193,8 @@ exports.updateAppointment = async (req, res, next) => {
       data: appointment,
     });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({
+    console.error("Error updating appointment:", error.message);
+    res.status(500).json({
       success: false,
       message: "Cannot update appointment",
     });
@@ -168,20 +206,23 @@ exports.updateAppointment = async (req, res, next) => {
 // @access  Private
 exports.deleteAppointment = async (req, res, next) => {
   try {
-    // หา appointment ตาม id
     const appointment = await Appointment.findById(req.params.id);
 
     if (!appointment) {
       return res.status(404).json({
         success: false,
-        message: `No appointment found with the id of ${req.params.id}`
+        message: `No appointment found with the ID of ${req.params.id}`,
       });
     }
-    
-    if (appointment.user.toString() !== req.user.id && req.user.role !== 'admin') {
+
+    // เช็คสิทธิ์ในการลบว่าเป็น admin มั้ย
+    if (
+      appointment.user.toString() !== req.user.id &&
+      req.user.role !== "admin"
+    ) {
       return res.status(401).json({
         success: false,
-        message: `User ${req.user.id} is not authorized to delete this appointment`
+        message: `User ${req.user.id} is not authorized to delete this appointment`,
       });
     }
 
@@ -190,21 +231,13 @@ exports.deleteAppointment = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      data: {}
+      data: {},
     });
   } catch (error) {
     console.error(error);
     return res.status(500).json({
       success: false,
-      message: "Cannot delete Appointment"
+      message: "Cannot delete appointment",
     });
   }
 };
-
-
-
-
-
-
-
-
