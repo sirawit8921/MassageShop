@@ -151,71 +151,111 @@ exports.logout = async (req, res, next) => {
   });
 };
 
+// @desc    Forgot password (send reset link if email exists)
+// @route   POST /api/v1/auth/forgotpassword
+// @access  Public
 exports.forgotPassword = async (req, res, next) => {
-  const user = await User.findOne({ email: req.body.email });
-
-  if (!user) {
-    return res
-      .status(404)
-      .json({ success: false, msg: "There is no user with that email" });
-  }
-
-  // Get reset token
-  const resetToken = user.getResetPasswordToken();
-
-  await user.save({ validateBeforeSave: false });
-
-  // Create reset URL
-  const resetUrl = `${req.protocol}://${req.get(
-    "host"
-  )}/api/v1/auth/resetpassword/${resetToken}`;
-
-  const message = `You are receiving this email because you has requested the reset password.\n\nPlease make a put request to:\n\n${resetUrl}`;
+  const { email } = req.body;
 
   try {
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(200).json({
+        success: true,
+        message: "If that email exists, a reset link has been sent.",
+      });
+    }
+
+    // ใช้ method จาก model (จะ hash และ save ใน DB ให้ครบ)
+    const resetToken = user.getResetPasswordToken();
+
+    // ต้อง save หลังจากสร้าง token
+    await user.save({ validateBeforeSave: false });
+
+    // ส่ง token ดิบไปในอีเมล
+    const resetUrl = `${process.env.FRONTEND_URL}/resetpassword/${resetToken}`;
+
+    const message = `
+      You (or someone else) requested a password reset.
+      Please click the link below to reset your password:
+      \n\n ${resetUrl} \n\n
+      This link will expire in 10 minutes.
+    `;
+
     await sendEmail({
       email: user.email,
-      subject: "Password reset token",
+      subject: "Password Reset Request",
       message,
     });
 
-    res.status(200).json({ success: true, data: "Email sent" });
+    res.status(200).json({
+      success: true,
+      message: "Reset link sent to email if it exists in our system",
+    });
   } catch (err) {
-    console.error(err);
+    console.error("Forgot Password Error:", err.message);
     user.resetPasswordToken = undefined;
     user.resetPasswordExpire = undefined;
     await user.save({ validateBeforeSave: false });
-
-    return res
-      .status(500)
-      .json({ success: false, msg: "Email could not be sent" });
+    res.status(500).json({ success: false, error: "Email could not be sent" });
   }
 };
+
 
 // @desc    Reset password
 // @route   PUT /api/v1/auth/resetpassword/:resettoken
 // @access  Public
+// @desc    Reset password
+// @route   PUT /api/v1/auth/resetpassword/:resettoken
+// @access  Public
 exports.resetPassword = async (req, res, next) => {
-  // Get hashed token
-  const resetPasswordToken = crypto
-    .createHash("sha256")
-    .update(req.params.resettoken)
-    .digest("hex");
+  try {
+    console.log("====== RESET PASSWORD DEBUG ======");
+    console.log("Incoming raw token:", req.params.resettoken);
 
-  const user = await User.findOne({
-    resetPasswordToken,
-    resetPasswordExpire: { $gt: Date.now() },
-  });
+    // แปลง token ที่ส่งมาให้เป็น hash
+    const resetPasswordToken = crypto
+      .createHash("sha256")
+      .update(req.params.resettoken)
+      .digest("hex");
 
-  if (!user) {
-    return res.status(400).json({ success: false, msg: "Invalid token" });
+    console.log("Hashed token:", resetPasswordToken);
+
+    // ดู token ทั้งหมดใน DB
+    const allUsers = await User.find({}, 'email resetPasswordToken resetPasswordExpire');
+    console.log("All tokens in DB:");
+    console.table(allUsers.map(u => ({
+      email: u.email,
+      token: u.resetPasswordToken,
+      expire: u.resetPasswordExpire
+    })));
+
+    // หา user ที่มี token และยังไม่หมดอายุ
+    const user = await User.findOne({
+      resetPasswordToken,
+      resetPasswordExpire: { $gt: Date.now() },
+    });
+
+    console.log("Found user:", user ? user.email : null);
+
+    // ถ้าไม่พบ user
+    if (!user) {
+      console.log("⚠️ Invalid token or expired.");
+      return res.status(400).json({ success: false, msg: "Invalid token" });
+    }
+
+    // ถ้าพบ user → อัปเดตรหัสผ่าน
+    user.password = req.body.password;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
+
+    await user.save();
+
+    console.log("✅ Password reset success for:", user.email);
+    return res.status(200).json({ success: true, msg: "Password reset success" });
+  } catch (err) {
+    console.error("Reset Password Error:", err.message);
+    return res.status(500).json({ success: false, error: "Server Error" });
   }
-
-  // Set new password
-  user.password = req.body.password;
-  user.resetPasswordToken = undefined;
-  user.resetPasswordExpire = undefined;
-  await user.save();
-
-  res.status(200).json({ success: true, msg: "Password reset success" });
 };
