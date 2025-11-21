@@ -1,0 +1,4 @@
+# ignore all node_module
+node_module/*
+#ignore config file
+#config/congif.env

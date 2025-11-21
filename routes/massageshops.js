@@ -162,7 +162,7 @@ router.use('/:massageShopId/appointments', appointmentRouter);
 // Main routes
 router
   .route('/')
-  .get(protect, authorize('admin'), getMassageShops,)
+  .get(getMassageShops)
   .post(protect, authorize('admin'), createMassageShop);
 
 router

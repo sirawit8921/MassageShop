@@ -95,51 +95,42 @@ exports.getMassageShop = async (req, res, next) => {
 // @desc    Create new massage shop
 // @route   POST /api/v1/massageshops
 // @access  Private
+// @desc    Create new massage shop
+// @route   POST /api/v1/massageshops
+// @access  Private
+// @desc    Create new massage shop
+// @route   POST /api/v1/massageshops
+// @access  Private
 exports.createMassageShop = async (req, res, next) => {
   try {
+    req.body.user = req.user.id;
+
     const massageShop = await MassageShop.create(req.body);
-    res.status(201).json({ success: true, data: massageShop });
+
+    res.status(201).json({
+      success: true,
+      data: massageShop,
+    });
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
+    res.status(400).json({
+      success: false,
+      error: err.message,
+    });
   }
 };
 
-// @desc    Update Massage Shop
-// @route   PUT /api/v1/massageshops/:id
-// @access  Private
-exports.updateMassageShop = async (req, res, next) => {
-  try {
-    const massageShop = await MassageShop.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      {
-        new: true,
-        runValidators: true,
-      }
-    );
-
-    if (!massageShop) {
-      return res.status(404).json({
-        success: false,
-        error: `No massage shop found with the ID of ${req.params.id}`,
-      });
-    }
-
-    res.status(200).json({ success: true, data: massageShop });
-  } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
-  }
-};
 
 // @desc    Update Massage Shop
 // @route   PUT /api/v1/massageshops/:id
-// @access  Private (Admin only)
+// @access  Private (Admin or Owner)
 exports.updateMassageShop = async (req, res, next) => {
   try {
-    const { name, address, telephone, openTime, closeTime } = req.body;
+    // ✅ รองรับทั้ง name และ shopName
+    const shopName = req.body.shopName || req.body.name;
+    const { address, telephone, openTime, closeTime } = req.body;
 
-    // หาร้านนวดจาก id
-    let massageShop = await MassageShop.findById(req.params.id);
+    // 🔍 ค้นหาร้านนวดจาก ID
+    const massageShop = await MassageShop.findById(req.params.id);
 
     if (!massageShop) {
       return res.status(404).json({
@@ -148,23 +139,35 @@ exports.updateMassageShop = async (req, res, next) => {
       });
     }
 
-    // ตรวจสอบสิทธิ์: admin เท่านั้นที่แก้ไขได้
-    if (req.user.role !== "admin") {
+    // 🔐 ตรวจสอบสิทธิ์
+    if (!massageShop.user) {
+      if (req.user.role === "admin") {
+        console.log("⚙️ Admin overriding: massage shop has no owner.");
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: "This massage shop has no owner assigned.",
+        });
+      }
+    } else if (
+      massageShop.user.toString() !== req.user.id &&
+      req.user.role !== "admin"
+    ) {
       return res.status(403).json({
         success: false,
-        message: "Not authorized to update massage shop",
+        message: "Not authorized to update this massage shop",
       });
     }
 
-    // ✅ อัปเดตเฉพาะ field ที่ส่งมา
-    if (name) massageShop.name = name;
+    // 🧩 อัปเดตเฉพาะฟิลด์ที่ส่งมา
+    if (shopName) massageShop.shopName = shopName; // ✅ เปลี่ยนตรงนี้
     if (address) massageShop.address = address;
     if (telephone) massageShop.telephone = telephone;
     if (openTime) massageShop.openTime = openTime;
     if (closeTime) massageShop.closeTime = closeTime;
 
-    // ✅ บันทึกลงฐานข้อมูล
-    await massageShop.save();
+    // 💾 บันทึกลงฐานข้อมูล
+    await massageShop.save({ runValidators: true });
 
     res.status(200).json({
       success: true,
@@ -178,6 +181,8 @@ exports.updateMassageShop = async (req, res, next) => {
     });
   }
 };
+
+
 
 
 // @desc    Delete Massage Shop

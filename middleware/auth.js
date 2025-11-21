@@ -10,9 +10,12 @@ exports.protect = async (req,res,next) => {
   }
 
   //Make sure token exists
-  if (!token || token=='null') {
-    return res.status(401).json({success:false, message: 'Not authorized to access this route'});
-  }
+  // ถ้าไม่มี token หรือ header authorization เลย ให้ข้ามไปได้ (ไม่บังคับ login)
+  if (!token || token === 'null' || token === undefined) {
+  
+  return next();
+}
+
 
   try {
     //Verify Token
