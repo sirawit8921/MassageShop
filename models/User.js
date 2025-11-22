@@ -47,12 +47,12 @@ const UserSchema = new mongoose.Schema({
 
 //Encrypt password using bcrypt
 UserSchema.pre('save', async function (next) {
-  // ถ้า password ไม่ได้ถูกแก้ไข (เช่นตอน reset token) ก็ข้ามไป
+
   if (!this.isModified('password')) {
     return next();
   }
 
-  // ถ้ามี password ใหม่ให้ hash ปกติ
+
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
   next();

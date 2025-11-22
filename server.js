@@ -69,7 +69,7 @@ app.use('/api-docs', swaggerUI.serve, swaggerUI.setup(swaggerDocs));
 // Rate Limiting
 const limiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 นาที
-  max: 100, // จำกัดไม่เกิน 100 requests ต่อ 10 นาที
+  max: 500, // จำกัดไม่เกิน 100 requests ต่อ 10 นาที
 });
 app.use(limiter);
 

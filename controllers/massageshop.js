@@ -125,11 +125,11 @@ exports.createMassageShop = async (req, res, next) => {
 // @access  Private (Admin or Owner)
 exports.updateMassageShop = async (req, res, next) => {
   try {
-    // ✅ รองรับทั้ง name และ shopName
+    // รองรับทั้ง name และ shopName
     const shopName = req.body.shopName || req.body.name;
     const { address, telephone, openTime, closeTime } = req.body;
 
-    // 🔍 ค้นหาร้านนวดจาก ID
+    // ค้นหาร้านนวดจาก ID
     const massageShop = await MassageShop.findById(req.params.id);
 
     if (!massageShop) {
@@ -139,10 +139,10 @@ exports.updateMassageShop = async (req, res, next) => {
       });
     }
 
-    // 🔐 ตรวจสอบสิทธิ์
+    // ตรวจสอบสิทธิ์
     if (!massageShop.user) {
       if (req.user.role === "admin") {
-        console.log("⚙️ Admin overriding: massage shop has no owner.");
+        console.log("Admin overriding: massage shop has no owner.");
       } else {
         return res.status(400).json({
           success: false,
@@ -159,14 +159,14 @@ exports.updateMassageShop = async (req, res, next) => {
       });
     }
 
-    // 🧩 อัปเดตเฉพาะฟิลด์ที่ส่งมา
-    if (shopName) massageShop.shopName = shopName; // ✅ เปลี่ยนตรงนี้
+    // อัปเดตเฉพาะฟิลด์ที่ส่งมา
+    if (shopName) massageShop.shopName = shopName;
     if (address) massageShop.address = address;
     if (telephone) massageShop.telephone = telephone;
     if (openTime) massageShop.openTime = openTime;
     if (closeTime) massageShop.closeTime = closeTime;
 
-    // 💾 บันทึกลงฐานข้อมูล
+    // บันทึกลงฐานข้อมูล
     await massageShop.save({ runValidators: true });
 
     res.status(200).json({

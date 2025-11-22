@@ -9,7 +9,6 @@ exports.register = async (req, res, next) => {
   try {
     const { name, telephone, email, password, role } = req.body;
 
-    // ข้อมูลที่สมัครต้องมีครบ
     if (!name || !telephone || !email || !password) {
       return res.status(400).json({
         success: false,
@@ -214,7 +213,6 @@ exports.resetPassword = async (req, res, next) => {
     console.log("====== RESET PASSWORD DEBUG ======");
     console.log("Incoming raw token:", req.params.resettoken);
 
-    // แปลง token ที่ส่งมาให้เป็น hash
     const resetPasswordToken = crypto
       .createHash("sha256")
       .update(req.params.resettoken)
@@ -222,7 +220,6 @@ exports.resetPassword = async (req, res, next) => {
 
     console.log("Hashed token:", resetPasswordToken);
 
-    // ดู token ทั้งหมดใน DB
     const allUsers = await User.find({}, 'email resetPasswordToken resetPasswordExpire');
     console.log("All tokens in DB:");
     console.table(allUsers.map(u => ({
@@ -231,7 +228,6 @@ exports.resetPassword = async (req, res, next) => {
       expire: u.resetPasswordExpire
     })));
 
-    // หา user ที่มี token และยังไม่หมดอายุ
     const user = await User.findOne({
       resetPasswordToken,
       resetPasswordExpire: { $gt: Date.now() },
@@ -239,20 +235,18 @@ exports.resetPassword = async (req, res, next) => {
 
     console.log("Found user:", user ? user.email : null);
 
-    // ถ้าไม่พบ user
     if (!user) {
-      console.log("⚠️ Invalid token or expired.");
+      console.log("Invalid token or expired.");
       return res.status(400).json({ success: false, msg: "Invalid token" });
     }
 
-    // ถ้าพบ user → อัปเดตรหัสผ่าน
     user.password = req.body.password;
     user.resetPasswordToken = undefined;
     user.resetPasswordExpire = undefined;
 
     await user.save();
 
-    console.log("✅ Password reset success for:", user.email);
+    console.log("Password reset success for:", user.email);
     return res.status(200).json({ success: true, msg: "Password reset success" });
   } catch (err) {
     console.error("Reset Password Error:", err.message);

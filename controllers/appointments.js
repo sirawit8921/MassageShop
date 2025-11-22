@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Appointment = require("../models/Appointment");
 const MassageShop = require("../models/MassageShop");
 
@@ -11,22 +12,25 @@ exports.getAppointments = async (req, res, next) => {
     return res.status(401).json({ success: false, error: "Not authorized" });
   }
 
+  // User → ดูของตัวเอง
   if (req.user.role !== "admin") {
-    // ผู้ใช้ทั่วไปเห็นเฉพาะของตัวเอง
     query = Appointment.find({ user: req.user.id }).populate({
       path: "massageShop",
-      select: "name address telephone",
+      select: "shopName address telephone",
     });
   } else {
+    // Admin → ดูทั้งหมด หรือ filter ตาม massageShopId
     if (req.params.massageShopId) {
-      query = Appointment.find({ massageShop: req.params.massageShopId }).populate({
+      query = Appointment.find({
+        massageShop: req.params.massageShopId,
+      }).populate({
         path: "massageShop",
-        select: "name address telephone",
+        select: "shopName address telephone",
       });
     } else {
       query = Appointment.find().populate({
         path: "massageShop",
-        select: "name address telephone",
+        select: "shopName address telephone",
       });
     }
   }
@@ -54,7 +58,7 @@ exports.getAppointment = async (req, res, next) => {
   try {
     const appointment = await Appointment.findById(req.params.id).populate({
       path: "massageShop",
-      select: "name address telephone",
+      select: "shopName address telephone",
     });
 
     if (!appointment) {
@@ -77,31 +81,32 @@ exports.getAppointment = async (req, res, next) => {
   }
 };
 
-// @desc    Add appointment
+// @desc    Add appointment (ObjectId only)
 // @route   POST /api/v1/appointments
 // @access  Private
 exports.addAppointment = async (req, res, next) => {
   try {
     const { massageShop, date } = req.body;
 
-    // ตรวจสอบว่ามีการส่งชื่อร้านมาหรือไม่
-    if (!massageShop) {
+    // ต้องส่ง ObjectId
+    if (!massageShop || !mongoose.Types.ObjectId.isValid(massageShop)) {
       return res.status(400).json({
         success: false,
-        message: "Please provide massageShop name",
+        message: "Please provide a valid massageShop ID",
       });
     }
 
-    const foundShop = await MassageShop.findOne({ shopName: massageShop });
+    // หา shop จาก ObjectId
+    const foundShop = await MassageShop.findById(massageShop);
 
     if (!foundShop) {
       return res.status(404).json({
         success: false,
-        message: `No massage shop found with name "${massageShop}"`,
+        message: `No massage shop found with ID ${massageShop}`,
       });
     }
 
-    // จำกัดจำนวนการจองสูงสุด 3 ครั้งต่อผู้ใช้ (ยกเว้น admin)
+    // จำกัดการจอง 3 ครั้ง (user)
     const existingAppointments = await Appointment.find({ user: req.user.id });
     if (existingAppointments.length >= 3 && req.user.role !== "admin") {
       return res.status(400).json({
@@ -110,7 +115,7 @@ exports.addAppointment = async (req, res, next) => {
       });
     }
 
-    // สร้าง appointment ใหม่ (เก็บ id ของร้านเพื่อ populate ทีหลัง)
+    // สร้าง appointment ใหม่
     const appointment = await Appointment.create({
       user: req.user.id,
       massageShop: foundShop._id,
@@ -130,14 +135,14 @@ exports.addAppointment = async (req, res, next) => {
   }
 };
 
-// @desc    Update appointment
+// @desc    Update appointment (ObjectId only)
 // @route   PUT /api/v1/appointments/:id
 // @access  Private
 exports.updateAppointment = async (req, res, next) => {
   try {
     const { massageShop, date, status } = req.body;
 
-    // หา appointment ก่อน
+    // หาเดิมก่อน
     let appointment = await Appointment.findById(req.params.id);
 
     if (!appointment) {
@@ -147,7 +152,7 @@ exports.updateAppointment = async (req, res, next) => {
       });
     }
 
-    // ตรวจสอบสิทธิ์: เจ้าของหรือ admin เท่านั้นที่แก้ได้
+    // ตรวจสิทธิ์
     if (
       appointment.user.toString() !== req.user.id &&
       req.user.role !== "admin"
@@ -158,32 +163,42 @@ exports.updateAppointment = async (req, res, next) => {
       });
     }
 
-    // ถ้ามีชื่อร้าน ให้ตรวจสอบว่าร้านมีอยู่จริง
-    let updatedShop = appointment.massageShop; // ค่าเดิม
+    let updatedShop = appointment.massageShop;
+
+    // อัปเดตร้านด้วย ObjectId เท่านั้น
     if (massageShop) {
-      const foundShop = await MassageShop.findOne({ shopName: massageShop });
+      if (!mongoose.Types.ObjectId.isValid(massageShop)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid massageShop ID",
+        });
+      }
+
+      const foundShop = await MassageShop.findById(massageShop);
+
       if (!foundShop) {
         return res.status(404).json({
           success: false,
-          message: `No massage shop found with name "${massageShop}"`,
+          message: `No massage shop found with ID ${massageShop}`,
         });
       }
-      updatedShop = foundShop._id; // ✅ ใช้ id ของร้าน
+
+      updatedShop = foundShop._id;
     }
 
-    // อัปเดตข้อมูลการจอง
-    appointment = await Appointment.findByIdAndUpdate(
+    // อัปเดตข้อมูล
+    await Appointment.findByIdAndUpdate(
       req.params.id,
       {
         massageShop: updatedShop,
         date: date || appointment.date,
         status: status || appointment.status,
       },
-      {
-        new: true,
-        runValidators: true,
-      }
-    ).populate({
+      { new: true, runValidators: true }
+    );
+
+    // populate หลังจาก update เสร็จ
+    appointment = await Appointment.findById(req.params.id).populate({
       path: "massageShop",
       select: "shopName address telephone",
     });
@@ -201,6 +216,7 @@ exports.updateAppointment = async (req, res, next) => {
   }
 };
 
+
 // @desc    Delete appointment
 // @route   DELETE /api/v1/appointments/:id
 // @access  Private
@@ -215,7 +231,7 @@ exports.deleteAppointment = async (req, res, next) => {
       });
     }
 
-    // เช็คสิทธิ์ในการลบว่าเป็น admin มั้ย
+    // ตรวจสิทธิ์
     if (
       appointment.user.toString() !== req.user.id &&
       req.user.role !== "admin"
@@ -226,7 +242,6 @@ exports.deleteAppointment = async (req, res, next) => {
       });
     }
 
-    // ลบ appointment
     await appointment.deleteOne();
 
     res.status(200).json({
