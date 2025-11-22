@@ -201,7 +201,6 @@ exports.forgotPassword = async (req, res, next) => {
   }
 };
 
-
 // @desc    Reset password
 // @route   PUT /api/v1/auth/resetpassword/:resettoken
 // @access  Public
@@ -220,13 +219,18 @@ exports.resetPassword = async (req, res, next) => {
 
     console.log("Hashed token:", resetPasswordToken);
 
-    const allUsers = await User.find({}, 'email resetPasswordToken resetPasswordExpire');
+    const allUsers = await User.find(
+      {},
+      "email resetPasswordToken resetPasswordExpire"
+    );
     console.log("All tokens in DB:");
-    console.table(allUsers.map(u => ({
-      email: u.email,
-      token: u.resetPasswordToken,
-      expire: u.resetPasswordExpire
-    })));
+    console.table(
+      allUsers.map((u) => ({
+        email: u.email,
+        token: u.resetPasswordToken,
+        expire: u.resetPasswordExpire,
+      }))
+    );
 
     const user = await User.findOne({
       resetPasswordToken,
@@ -247,7 +251,9 @@ exports.resetPassword = async (req, res, next) => {
     await user.save();
 
     console.log("Password reset success for:", user.email);
-    return res.status(200).json({ success: true, msg: "Password reset success" });
+    return res
+      .status(200)
+      .json({ success: true, msg: "Password reset success" });
   } catch (err) {
     console.error("Reset Password Error:", err.message);
     return res.status(500).json({ success: false, error: "Server Error" });
